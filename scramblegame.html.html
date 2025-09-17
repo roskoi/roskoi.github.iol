@@ -1,0 +1,139 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word Scramble Game</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f9;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0;
+    padding: 20px;
+}
+h1 {
+    color: #333;
+}
+#game-container {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    width: 90%;
+    max-width: 600px;
+    margin-bottom: 20px;
+}
+#scrambled-word {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+#attempts, #score {
+    font-size: 18px;
+    margin-bottom: 10px;
+}
+#user-input {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+#submit-btn {
+    padding: 10px 20px;
+    font-size: 16px;
+    background-color: #4CAF50;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+#submit-btn:hover { background-color: #45a049; }
+#proof {
+    background: #fff;
+    padding: 15px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    text-align: center;
+}
+#proof a {
+    color: #0077cc;
+    text-decoration: none;
+}
+#proof a:hover {
+    text-decoration: underline;
+}
+</style>
+</head>
+<body>
+
+<h1>Word Scramble Game</h1>
+
+<div id="game-container">
+    <div id="scrambled-word">Scrambled Word: <span id="word-display">Loading...</span></div>
+    <div id="attempts">Attempts Left: <span id="attempts-left">3</span></div>
+    <input type="text" id="user-input" placeholder="Your guess...">
+    <button id="submit-btn">Submit</button>
+    <div id="score">Score: <span id="score-count">0</span></div>
+</div>
+
+<div id="proof">
+    <p>Game developed with the help of ChatGPT AI. Proof of AI-assisted development:</p>
+    <a href="https://chatgpt.com/share/68ca5b09-0bc0-800e-a15b-9f341f277a44" target="_blank">View ChatGPT Conversation</a>
+</div>
+
+<script>
+const words = ["python","javascript","html","css","node","react","angular","vue","express","mongodb"];
+let currentWord = '';
+let attempts = 3;
+let score = 0;
+
+function getRandomWord() {
+    return words[Math.floor(Math.random() * words.length)];
+}
+
+function scrambleWord(word) {
+    return word.split('').sort(() => 0.5 - Math.random()).join('');
+}
+
+function startNewRound() {
+    currentWord = getRandomWord();
+    const scrambled = scrambleWord(currentWord);
+    document.getElementById('word-display').textContent = scrambled;
+    document.getElementById('attempts-left').textContent = attempts;
+    document.getElementById('user-input').value = '';
+    document.getElementById('user-input').focus();
+}
+
+document.getElementById('submit-btn').addEventListener('click', () => {
+    const guess = document.getElementById('user-input').value.trim().toLowerCase();
+    if(guess === currentWord){
+        score++;
+        document.getElementById('score-count').textContent = score;
+        alert('Correct! Well done.');
+        startNewRound();
+    } else {
+        attempts--;
+        if(attempts > 0){
+            document.getElementById('attempts-left').textContent = attempts;
+            alert('Incorrect. Try again.');
+        } else {
+            alert(`Game Over! The correct word was "${currentWord}".`);
+            score = 0;
+            attempts = 3;
+            document.getElementById('score-count').textContent = score;
+            startNewRound();
+        }
+    }
+});
+
+startNewRound();
+</script>
+
+</body>
+</html>
