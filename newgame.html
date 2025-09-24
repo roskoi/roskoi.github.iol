@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word Scramble Game</title>
+<style>
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #7c3aed, #06b6d4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0;
+    padding: 20px;
+    color: #fff;
+    min-height: 100vh;
+}
+h1 {
+    margin-bottom: 20px;
+    font-size: 2.2rem;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+#game-container {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(8px);
+    padding: 25px;
+    border-radius: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+    width: 90%;
+    max-width: 500px;
+    text-align: center;
+    animation: fadeIn 0.5s ease-in-out;
+}
+#scrambled-word {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    letter-spacing: 3px;
+}
+#attempts, #score {
+    font-size: 18px;
+    margin: 10px 0;
+}
+#user-input {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: none;
+    outline: none;
+    margin-bottom: 15px;
+}
+button {
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    background: linear-gradient(135deg, #4ade80, #16a34a);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.2);
+}
+button:active {
+    transform: scale(0.97);
+}
+#message {
+    margin-top: 12px;
+    font-size: 16px;
+    font-weight: bold;
+    min-height: 20px;
+}
+#proof {
+    margin-top: 20px;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(6px);
+    padding: 15px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    text-align: center;
+    font-size: 14px;
+}
+#proof a {
+    color: #fff;
+    font-weight: bold;
+    text-decoration: underline;
+}
+@keyframes fadeIn {
+    from {opacity: 0; transform: translateY(20px);}
+    to {opacity: 1; transform: translateY(0);}
+}
+</style>
+</head>
+<body>
+
+<h1>✨ Word Scramble Game ✨</h1>
+
+<div id="game-container">
+    <div id="scrambled-word">Loading...</div>
+    <div id="attempts">Attempts Left: <span id="attempts-left">3</span></div>
+    <input type="text" id="user-input" placeholder="Type your guess...">
+    <button id="submit-btn">Submit</button>
+    <div id="score">Score: <span id="score-count">0</span></div>
+    <div id="message"></div>
+</div>
+
+<div id="proof">
+    <p>Developed with ChatGPT AI assistance.</p>
+    <a href="https://chatgpt.com/share/68ca5b09-0bc0-800e-a15b-9f341f277a44" target="_blank">Proof Link</a>
+</div>
+
+<script>
+const words = ["python","javascript","html","css","node","react","angular","vue","express","mongodb"];
+let currentWord = '';
+let attempts = 3;
+let score = 0;
+
+function getRandomWord() {
+    return words[Math.floor(Math.random() * words.length)];
+}
+
+function scrambleWord(word) {
+    let scrambled = word.split('');
+    do {
+        scrambled.sort(() => Math.random() - 0.5);
+    } while (scrambled.join('') === word); // ensure it's not same
+    return scrambled.join('');
+}
+
+function startNewRound() {
+    attempts = 3;
+    document.getElementById('attempts-left').textContent = attempts;
+    currentWord = getRandomWord();
+    document.getElementById('scrambled-word').textContent = scrambleWord(currentWord);
+    document.getElementById('user-input').value = '';
+    document.getElementById('message').textContent = '';
+    document.getElementById('user-input').focus();
+}
+
+document.getElementById('submit-btn').addEventListener('click', () => {
+    const guess = document.getElementById('user-input').value.trim().toLowerCase();
+    if (!guess) return;
+    if(guess === currentWord){
+        score++;
+        document.getElementById('score-count').textContent = score;
+        document.getElementById('message').textContent = "✅ Correct! Well done.";
+        document.getElementById('message').style.color = "#4ade80";
+        setTimeout(startNewRound, 1000);
+    } else {
+        attempts--;
+        document.getElementById('attempts-left').textContent = attempts;
+        if(attempts > 0){
+            document.getElementById('message').textContent = "❌ Incorrect. Try again.";
+            document.getElementById('message').style.color = "#f87171";
+        } else {
+            document.getElementById('message').textContent = `💀 Game Over! The word was "${currentWord}".`;
+            document.getElementById('message').style.color = "#f87171";
+            score = 0;
+            document.getElementById('score-count').textContent = score;
+            setTimeout(startNewRound, 2000);
+        }
+    }
+});
+
+// Start the first game
+startNewRound();
+</script>
+
+</body>
+</html>
