@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Single-file Data Analysis Tool</title>
+  <!-- CDN libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root{--accent:#4f46e5;--muted:#6b7280;--bg:#f7f7fb}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:#111}
+    .app{display:grid;grid-template-columns:360px 1fr;gap:18px;min-height:100vh;padding:18px}
+    .panel{background:white;border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(16,24,40,.06)}
+    .side{position:sticky;top:18px;height:calc(100vh - 36px);overflow:auto}
+    h2{margin:6px 0 12px;font-size:18px}
+    label{display:block;margin-top:8px;font-size:13px;color:var(--muted)}
+    input[type=file]{margin-top:8px}
+    .row{display:flex;gap:8px;align-items:center}
+    .btn{display:inline-block;padding:8px 12px;border-radius:8px;background:var(--accent);color:white;border:none;cursor:pointer}
+    .muted{color:var(--muted)}
+    .main-grid{display:flex;flex-direction:column;gap:12px}
+    .table-wrap{overflow:auto;max-height:360px;border-radius:8px}
+    table{border-collapse:collapse;width:100%;font-size:13px}
+    th,td{padding:6px 8px;border-bottom:1px solid #eee;text-align:left}
+    th{position:sticky;top:0;background:#fff}
+    .anomaly{background:rgba(239,68,68,.12)}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{background:#eef2ff;padding:6px 8px;border-radius:999px;font-size:13px}
+    .chart-wrap{background:white;padding:12px;border-radius:12px}
+    .small{font-size:12px;color:var(--muted)}
+    .filter-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+    select,input[type=text],input[type=number]{padding:6px;border-radius:6px;border:1px solid #e5e7eb}
+    .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    pre{white-space:pre-wrap;font-size:13px}
+    .download{background:#10b981}
+    @media(max-width:880px){.app{grid-template-columns:1fr}.side{position:static;height:auto}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel side">
+      <h2>Data • Controls</h2>
+      <label>Upload CSV</label>
+      <input id="csvFile" type="file" accept=".csv" />
+      <div style="margin-top:8px">
+        <button id="loadSample" class="btn">Load sample</button>
+        <button id="clearBtn" class="btn" style="background:#ef4444">Clear</button>
+      </div>
+
+      <hr style="margin:12px 0" />
+
+      <div>
+        <h3 style="margin:4px 0">Column types</h3>
+        <div id="colTypes" class="small muted">(load data to detect types)</div>
+      </div>
+
+      <hr style="margin:12px 0" />
+
+      <div>
+        <h3 style="margin:4px 0">Anomaly detection</h3>
+        <label class="small muted">Z-score threshold</label>
+        <input id="zThresh" type="number" value="3" step="0.1" />
+        <label class="small muted">Std-dev multiplier</label>
+        <input id="sdThresh" type="number" value="3" step="0.1" />
+        <div style="margin-top:8px" class="row">
+          <button id="runAnom" class="btn">Find anomalies</button>
+          <button id="exportAnom" class="btn download">Export anomalies</button>
+        </div>
+      </div>
+
+      <hr style="margin:12px 0" />
+
+      <div>
+        <h3 style="margin:4px 0">Filters</h3>
+        <div id="filterContainer"></div>
+        <div style="margin-top:8px" class="row">
+          <button id="addFilter" class="btn">Add condition</button>
+          <button id="applyFilter" class="btn">Apply</button>
+          <button id="clearFilter" class="btn" style="background:#9ca3af">Clear</button>
+        </div>
+      </div>
+
+      <hr style="margin:12px 0" />
+
+      <div>
+        <h3 style="margin:4px 0">Group by & aggregation</h3>
+        <label class="small muted">Group column</label>
+        <select id="groupCol"></select>
+        <label class="small muted">Numeric columns to aggregate</label>
+        <div id="numCols"></div>
+        <div style="margin-top:8px" class="row">
+          <button id="runGroup" class="btn">Run aggregation</button>
+          <button id="exportGroup" class="btn">Download</button>
+        </div>
+        <div id="groupResult" style="margin-top:8px" class="small muted"></div>
+      </div>
+
+      <hr style="margin:12px 0" />
+
+      <div>
+        <h3 style="margin:4px 0">Date/Time analysis</h3>
+        <label class="small muted">Date column</label>
+        <select id="dateCol"></select>
+        <div style="margin-top:8px" class="row">
+          <button id="runTime" class="btn">Show trend</button>
+          <button id="periodCompare" class="btn">Month vs Month</button>
+        </div>
+      </div>
+
+      <hr style="margin:12px 0" />
+
+      <div>
+        <h3 style="margin:4px 0">Export</h3>
+        <div class="row" style="margin-top:8px">
+          <button id="exportFiltered" class="btn">Download view</button>
+          <button id="exportStats" class="btn">Download stats</button>
+        </div>
+      </div>
+
+      <div style="height:40px"></div>
+    </aside>
+
+    <main class="main-grid">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h2>Dataset preview</h2>
+            <div id="meta" class="small muted">No data loaded</div>
+          </div>
+          <div class="controls">
+            <div id="typeChips"></div>
+            <button id="refreshBtn" class="btn">Refresh</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px" class="table-wrap panel">
+          <table id="dataTable"><thead id="thead"></thead><tbody id="tbody"></tbody></table>
+        </div>
+
+      </div>
+
+      <div class="panel chart-wrap">
+        <h2>Charts</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <canvas id="mainChart" style="max-height:320px"></canvas>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <label class="small muted">Chart type</label>
+          <select id="chartType">
+            <option value="line">Line</option>
+            <option value="bar">Bar</option>
+            <option value="hist">Histogram</option>
+          </select>
+          <label class="small muted">X column</label>
+          <select id="xCol"></select>
+          <label class="small muted">Y column</label>
+          <select id="yCol"></select>
+          <button id="drawChart" class="btn">Draw</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Statistics</h2>
+        <div id="statsArea" class="stat-grid small muted">(load dataset to show stats)</div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+  // Simple single-file data analysis tool
+  let rawData = [];
+  let headers = [];
+  let types = {}; // 'numeric'|'categorical'|'date'
+  let stats = {};
+  let anomalies = []; // array of {rowIndex, col, value, method}
+  let filteredIdx = null; // indices of filtered rows (null means unfiltered)
+  let chartInstance = null;
+
+  const csvFile = document.getElementById('csvFile');
+  const loadSample = document.getElementById('loadSample');
+  const clearBtn = document.getElementById('clearBtn');
+  const meta = document.getElementById('meta');
+  const thead = document.getElementById('thead');
+  const tbody = document.getElementById('tbody');
+  const colTypesDiv = document.getElementById('colTypes');
+  const zThresh = document.getElementById('zThresh');
+  const sdThresh = document.getElementById('sdThresh');
+  const runAnom = document.getElementById('runAnom');
+  const exportAnom = document.getElementById('exportAnom');
+  const filterContainer = document.getElementById('filterContainer');
+  const addFilter = document.getElementById('addFilter');
+  const applyFilter = document.getElementById('applyFilter');
+  const clearFilter = document.getElementById('clearFilter');
+  const groupCol = document.getElementById('groupCol');
+  const numColsDiv = document.getElementById('numCols');
+  const runGroup = document.getElementById('runGroup');
+  const exportGroup = document.getElementById('exportGroup');
+  const dateCol = document.getElementById('dateCol');
+  const runTime = document.getElementById('runTime');
+  const periodCompare = document.getElementById('periodCompare');
+  const exportFiltered = document.getElementById('exportFiltered');
+  const exportStats = document.getElementById('exportStats');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const xCol = document.getElementById('xCol');
+  const yCol = document.getElementById('yCol');
+  const chartType = document.getElementById('chartType');
+  const drawChart = document.getElementById('drawChart');
+  const statsArea = document.getElementById('statsArea');
+  const typeChips = document.getElementById('typeChips');
+
+  // event bindings
+  csvFile.addEventListener('change', e=>{
+    const f = e.target.files[0];
+    if (!f) return;
+    Papa.parse(f, {header:true, dynamicTyping:false, skipEmptyLines:true, complete: (res)=>{
+      loadParsed(res.data, res.meta.fields);
+    }});
+  });
+
+  loadSample.addEventListener('click', ()=>{
+    // simple sample CSV
+    const csv = `date,category,amount,items,remark\n2025-01-05,A,120,2,ok\n2025-01-07,B,500,1,good\n2025-02-02,A,1300,8,high\n2025-02-10,C,20,1,low\n2025-03-01,B,75,2,ok\n2025-03-05,A,2000,5,very high\n2025-03-06,A,2100,5,very high\n2025-03-07,B,60,1,ok\n`;
+    Papa.parse(csv, {header:true, dynamicTyping:false, skipEmptyLines:true, complete: (res)=>{
+      loadParsed(res.data, res.meta.fields);
+    }});
+  });
+
+  clearBtn.addEventListener('click', ()=>{ rawData=[]; headers=[]; types={}; stats={}; anomalies=[]; filteredIdx=null; renderAll(); });
+  refreshBtn.addEventListener('click', ()=>{ renderAll(); });
+
+  runAnom.addEventListener('click', ()=>{ detectAnomalies(); renderAll(); });
+  exportAnom.addEventListener('click', ()=>{ exportAnomalies(); });
+
+  addFilter.addEventListener('click', ()=>{ addFilterRow(); });
+  applyFilter.addEventListener('click', ()=>{ applyFilters(); });
+  clearFilter.addEventListener('click', ()=>{ filterContainer.innerHTML=''; filteredIdx=null; renderAll(); });
+
+  runGroup.addEventListener('click', ()=>{ runGroupBy(); });
+  exportGroup.addEventListener('click', ()=>{ downloadCSV(makeCSVFromArray(lastGroupResult||[]),'grouped.csv'); });
+
+  runTime.addEventListener('click', ()=>{ drawTimeTrend(); });
+  periodCompare.addEventListener('click', ()=>{ runPeriodCompare(); });
+
+  exportFiltered.addEventListener('click', ()=>{ exportFilteredView(); });
+  exportStats.addEventListener('click', ()=>{ downloadCSV(makeCSVFromArray([statsToRow()]), 'stats_summary.csv'); });
+
+  drawChart.addEventListener('click', ()=>{ drawCustomChart(); });
+
+  // helper functions
+  function loadParsed(data, fields){
+    rawData = data.map(r=>{ // keep original strings, but also parse values lazily
+      const o = {}; for (let k of fields){ o[k] = r[k]; } return o;
+    });
+    headers = fields.slice();
+    filteredIdx = null;
+    detectTypes(); computeStats(); anomalies=[]; renderAll();
+  }
+
+  function detectTypes(){
+    types = {};
+    headers.forEach(h=>{
+      let numericCount=0, dateCount=0, total=0, uniqueVals=new Set();
+      rawData.forEach(r=>{
+        const v = r[h];
+        if (v===null || v===undefined || String(v).trim()==='') return;
+        total++;
+        uniqueVals.add(String(v));
+        // try number
+        const num = Number(String(v).replace(/,/g,''));
+        if (!Number.isNaN(num) && isFinite(num)) numericCount++;
+        if (!Number.isNaN(Date.parse(String(v)))) dateCount++;
+      });
+      if (total>0 && (numericCount/total)>0.8) types[h]='numeric';
+      else if (total>0 && (dateCount/total)>0.8) types[h]='date';
+      else types[h]='categorical';
+    });
+    colTypesDiv.innerHTML = headers.map(h=>`<div><strong>${h}</strong>: ${types[h]}</div>`).join('');
+    populateSelectors();
+  }
+
+  function computeStats(){
+    stats = {};
+    headers.forEach(h=>{
+      const arr = rawData.map(r=>r[h]).filter(v=>v!==null && v!==undefined && String(v).trim()!=='');
+      if (types[h]==='numeric'){
+        const nums = arr.map(v=>Number(String(v).replace(/,/g,''))).filter(v=>!Number.isNaN(v));
+        const cnt = nums.length;
+        const mean = cnt?nums.reduce((a,b)=>a+b,0)/cnt:0;
+        const sq = nums.map(n=>Math.pow(n-mean,2));
+        const sd = cnt?Math.sqrt(sq.reduce((a,b)=>a+b,0)/cnt):0;
+        const sorted = nums.slice().sort((a,b)=>a-b);
+        stats[h] = {count:cnt, mean:mean, sd:sd, min:sorted[0]||0, max:sorted[sorted.length-1]||0, median: sorted.length?sorted[Math.floor((sorted.length-1)/2)]:0};
+      } else {
+        // categorical
+        const counts = {};
+        arr.forEach(v=>{ const k=String(v); counts[k]=(counts[k]||0)+1; });
+        stats[h] = {unique:Object.keys(counts).length, top:Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10)};
+      }
+    });
+    renderStatsArea();
+  }
+
+  function renderStatsArea(){
+    statsArea.innerHTML = '';
+    headers.forEach(h=>{
+      const box = document.createElement('div');
+      if (types[h]==='numeric'){
+        const s = stats[h]||{};
+        box.innerHTML = `<strong>${h}</strong><div class="small">count: ${s.count || 0} • mean: ${round(s.mean)} • sd: ${round(s.sd)} • min: ${round(s.min)} • max: ${round(s.max)} • median: ${round(s.median)}</div>`;
+      } else {
+        const s = stats[h]||{};
+        box.innerHTML = `<strong>${h}</strong><div class="small">unique: ${s.unique || 0} • top: ${ (s.top||[]).slice(0,3).map(t=>t[0]+"("+t[1]+")").join(', ') }</div>`;
+      }
+      statsArea.appendChild(box);
+    });
+  }
+
+  function renderAll(){
+    meta.innerText = headers.length?`${rawData.length} rows • ${headers.length} columns`: 'No data loaded';
+    renderTable();
+    populateTypeChips();
+  }
+
+  function renderTable(){
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+    if (!headers.length) return;
+    // header
+    const tr = document.createElement('tr');
+    headers.forEach(h=>{ const th = document.createElement('th'); th.innerText=h; tr.appendChild(th); });
+    thead.appendChild(tr);
+    // rows (apply filteredIdx or full)
+    const idxs = filteredIdx || rawData.map((_,i)=>i);
+    idxs.forEach((ri)=>{
+      const r = rawData[ri];
+      const tr = document.createElement('tr');
+      headers.forEach(h=>{
+        const td = document.createElement('td');
+        const v = r[h];
+        td.innerText = (v===null||v===undefined)?'':v;
+        // anomaly highlight?
+        const isAnom = anomalies.some(a=>a.rowIndex===ri && a.col===h);
+        if (isAnom) td.classList.add('anomaly');
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function populateSelectors(){
+    // groupCol
+    groupCol.innerHTML=''; dateCol.innerHTML=''; xCol.innerHTML=''; yCol.innerHTML=''; numColsDiv.innerHTML='';
+    headers.forEach(h=>{
+      const opt = document.createElement('option'); opt.value=h; opt.innerText=h; groupCol.appendChild(opt);
+      const opt2 = opt.cloneNode(true); dateCol.appendChild(opt2);
+      const opt3 = opt.cloneNode(true); xCol.appendChild(opt3);
+      const opt4 = opt.cloneNode(true); yCol.appendChild(opt4);
+      if (types[h]==='numeric'){
+        const cb = document.createElement('div'); cb.innerHTML = `<label><input type="checkbox" value="${h}" /> ${h}</label>`; numColsDiv.appendChild(cb);
+      }
+    });
+    // filter template
+    if (!filterContainer.innerHTML) addFilterRow();
+  }
+
+  function addFilterRow(){
+    const row = document.createElement('div'); row.className='filter-row';
+    const colS = document.createElement('select'); headers.forEach(h=>{ const o=document.createElement('option'); o.value=h; o.innerText=h; colS.appendChild(o); });
+    const opS = document.createElement('select'); opS.innerHTML = '<option value="=">=</option><option value=">">></option><option value="<"><</option><option value=">=">>=</option><option value="<="><=</option><option value="contains">contains</option><option value="equals">equals</option><option value="starts">starts with</option><option value="ends">ends with</option>';
+    const valI = document.createElement('input'); valI.type='text'; valI.placeholder='value';
+    const rm = document.createElement('button'); rm.className='btn'; rm.style.background='#ef4444'; rm.type='button'; rm.innerText='Remove'; rm.onclick=()=>row.remove();
+    row.appendChild(colS); row.appendChild(opS); row.appendChild(valI); row.appendChild(rm);
+    filterContainer.appendChild(row);
+  }
+
+  function applyFilters(){
+    const rows = Array.from(filterContainer.querySelectorAll('.filter-row'));
+    if (!rows.length){ filteredIdx = null; renderAll(); return; }
+    const idxs = [];
+    rawData.forEach((r,i)=>{
+      let keep=true;
+      for (const row of rows){
+        const col = row.querySelector('select').value;
+        const op = row.querySelectorAll('select')[1].value;
+        const val = row.querySelector('input').value;
+        const cell = r[col];
+        if (!evaluateCondition(cell, op, val)) { keep=false; break; }
+      }
+      if (keep) idxs.push(i);
+    });
+    filteredIdx = idxs; renderAll();
+  }
+
+  function evaluateCondition(cell, op, val){
+    const sCell = (cell===null||cell===undefined)?'':String(cell);
+    if (op==='contains') return sCell.toLowerCase().includes(val.toLowerCase());
+    if (op==='equals') return sCell.toLowerCase()===val.toLowerCase();
+    if (op==='starts') return sCell.toLowerCase().startsWith(val.toLowerCase());
+    if (op==='ends') return sCell.toLowerCase().endsWith(val.toLowerCase());
+    // numeric ops
+    const numCell = Number(sCell.replace(/,/g,''));
+    const numVal = Number(val);
+    if (isNaN(numVal) || isNaN(numCell)){
+      // fallback to string equals
+      if (op==='=') return sCell===val;
+      return false;
+    }
+    if (op==='=') return numCell===numVal;
+    if (op==='>') return numCell>numVal;
+    if (op==='<') return numCell<numVal;
+    if (op==='>=') return numCell>=numVal;
+    if (op==='<=') return numCell<=numVal;
+    return false;
+  }
+
+  function round(n){ return (Math.round((n||0)*100)/100).toLocaleString(); }
+
+  function detectAnomalies(){
+    anomalies = [];
+    headers.forEach(h=>{
+      if (types[h]!=='numeric') return;
+      const s = stats[h]||{}; const mean = s.mean||0; const sd = s.sd||0; const zT = Number(zThresh.value)||3; const sdT = Number(sdThresh.value)||3;
+      rawData.forEach((r,i)=>{
+        const raw = r[h];
+        const val = Number(String(raw).replace(/,/g,''));
+        if (Number.isNaN(val)) return;
+        const z = sd? Math.abs((val-mean)/sd) : 0;
+        if (z>zT) anomalies.push({rowIndex:i,col:h,value:val,method:'zscore',score:z});
+        else if (Math.abs(val-mean) > sdT*sd) anomalies.push({rowIndex:i,col:h,value:val,method:'sd',score:Math.abs(val-mean)/sd});
+      });
+    });
+    anomalies = anomalies.sort((a,b)=>a.rowIndex-b.rowIndex);
+    document.getElementById('groupResult').innerText = `Found ${anomalies.length} anomalies`;
+  }
+
+  function exportAnomalies(){
+    if (!anomalies.length){ alert('No anomalies to export'); return; }
+    const rows = anomalies.map(a=>{
+      const r = rawData[a.rowIndex];
+      const out = {__rowIndex:a.rowIndex, __col:a.col, __method:a.method, __score:a.score};
+      headers.forEach(h=> out[h]=r[h]);
+      return out;
+    });
+    downloadCSV(makeCSVFromArray(rows), 'anomalies.csv');
+  }
+
+  function makeCSVFromArray(arr){
+    if (!arr.length) return '';
+    const keys = Object.keys(arr[0]);
+    const lines = [keys.join(',')];
+    arr.forEach(r=>{
+      const row = keys.map(k=>`"${String(r[k]||'').replace(/"/g,'""')}"`).join(',');
+      lines.push(row);
+    });
+    return lines.join('\n');
+  }
+
+  function downloadCSV(text, filename){
+    const blob = new Blob([text], {type: 'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  function exportFilteredView(){
+    const idxs = filteredIdx || rawData.map((_,i)=>i);
+    const arr = idxs.map(i=>rawData[i]);
+    if (!arr.length){ alert('No rows to export'); return; }
+    downloadCSV(makeCSVFromArray(arr), 'export.csv');
+  }
+
+  // Group by implementation
+  let lastGroupResult = null;
+  function runGroupBy(){
+    const gCol = groupCol.value; if (!gCol) return; const numCols = Array.from(numColsDiv.querySelectorAll('input[type=checkbox]:checked')).map(n=>n.value);
+    if (!numCols.length){ alert('Pick numeric columns to aggregate'); return; }
+    const groups = {};
+    rawData.forEach(r=>{
+      const key = r[gCol]||'';
+      groups[key] = groups[key] || {__group:key, __count:0};
+      groups[key].__count++;
+      numCols.forEach(c=>{
+        const v = Number(String(r[c]||'').replace(/,/g,'')); groups[key][c] = (groups[key][c]||0) + (Number.isNaN(v)?0:v);
+        // track min max
+        groups[key][c+'_min'] = (groups[key][c+'_min']===undefined)?v:Math.min(groups[key][c+'_min'],v);
+        groups[key][c+'_max'] = (groups[key][c+'_max']===undefined)?v:Math.max(groups[key][c+'_max'],v);
+      });
+    });
+    const out = Object.values(groups).map(g=>{
+      const row = {group:g.__group, count:g.__count};
+      numCols.forEach(c=>{ row[c+'_sum']=roundNumber(g[c]||0); row[c+'_min']=roundNumber(g[c+'_min']); row[c+'_max']=roundNumber(g[c+'_max']); row[c+'_avg']=roundNumber((g[c]||0)/g.__count); });
+      return row;
+    });
+    lastGroupResult = out;
+    // show
+    document.getElementById('groupResult').innerHTML = `<pre>${JSON.stringify(out.slice(0,10),null,2)}</pre>`;
+  }
+
+  function roundNumber(n){ return Math.round((n||0)*100)/100; }
+
+  // Date/time analysis
+  function drawTimeTrend(){
+    const dcol = dateCol.value; if (!dcol){ alert('pick date column'); return; }
+    // group by month
+    const aggr = {};
+    rawData.forEach(r=>{
+      const v = r[dcol]; const dt = new Date(String(v)); if (isNaN(dt)) return; const key = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0');
+      aggr[key] = aggr[key] || {count:0}; aggr[key].count++;
+    });
+    const labels = Object.keys(aggr).sort(); const data = labels.map(l=>aggr[l].count);
+    drawChartJs(labels, data, 'line');
+  }
+
+  function runPeriodCompare(){
+    const dcol = dateCol.value; if (!dcol){ alert('pick date column'); return; }
+    // compare last month vs previous month counts
+    const aggr = {};
+    rawData.forEach(r=>{
+      const v = r[dcol]; const dt = new Date(String(v)); if (isNaN(dt)) return; const key = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0');
+      aggr[key] = aggr[key] || 0; aggr[key]++;
+    });
+    const keys = Object.keys(aggr).sort();
+    if (keys.length<2) { alert('Not enough periods'); return; }
+    const last = keys[keys.length-1]; const prev = keys[keys.length-2];
+    alert(`Period comparison:\n${prev}: ${aggr[prev]} rows\n${last}: ${aggr[last]} rows\nChange: ${((aggr[last]-aggr[prev])/Math.max(1,aggr[prev])*100).toFixed(2)}%`);
+  }
+
+  function detectDateColumns(){
+    // run detection already in detectTypes; offer date columns
+    // this is a helper to pre-select likely date columns
+  }
+
+  // Charting
+  function drawCustomChart(){
+    const xtype = chartType.value; const x = xCol.value; const y = yCol.value; if (!x || !y) { alert('pick X and Y'); return; }
+    // prepare labels and data
+    const idxs = filteredIdx || rawData.map((_,i)=>i);
+    const labels = idxs.map(i=>String(rawData[i][x]||''));
+    const data = idxs.map(i=>Number(String(rawData[i][y]||'').replace(/,/g,''))||0);
+    if (xtype==='hist'){
+      // build bins
+      const bins = {}; data.forEach(v=>{ const b = Math.floor(v/10)*10; bins[b]=(bins[b]||0)+1; });
+      const labels2 = Object.keys(bins).sort((a,b)=>a-b); const data2 = labels2.map(l=>bins[l]); drawChartJs(labels2, data2, 'bar');
+    } else {
+      drawChartJs(labels, data, xtype);
+    }
+  }
+
+  function drawChartJs(labels, data, type){
+    const ctx = document.getElementById('mainChart');
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(ctx, {type:type, data:{labels:labels, datasets:[{label:'Series', data:data, tension:0.3}]}, options:{responsive:true, maintainAspectRatio:false}});
+  }
+
+  // utility to export stats
+  function statsToRow(){
+    const row = {};
+    headers.forEach(h=>{ const s = stats[h]||{}; if (types[h]==='numeric'){ row[h+'_count']=s.count; row[h+'_mean']=s.mean; row[h+'_sd']=s.sd; } else { row[h+'_unique']=s.unique; } });
+    return row;
+  }
+
+  // helper to create CSV from array of objects
+  function makeCSVFromArray(arr){
+    if (!arr.length) return '';
+    const keys = Object.keys(arr[0]);
+    const lines = [keys.join(',')];
+    arr.forEach(r=>{ lines.push(keys.map(k=>`"${String(r[k]||'').replace(/"/g,'""')}"`).join(',')); });
+    return lines.join('\n');
+  }
+
+  function exportAnomaliesQuick(){ exportAnomalies(); }
+
+  function exportCSVBlob(data, filename){ downloadCSV(makeCSVFromArray(data), filename); }
+
+  function makeCSVFromArray(arr){
+    if (!arr.length) return '';
+    const keys = Object.keys(arr[0]);
+    const lines = [keys.join(',')];
+    arr.forEach(r=>{
+      lines.push(keys.map(k=>`"${String(r[k]||'').replace(/"/g,'""')}"`).join(','));
+    });
+    return lines.join('\n');
+  }
+
+  function exportFilteredView(){
+    const idxs = filteredIdx || rawData.map((_,i)=>i);
+    const arr = idxs.map(i=>rawData[i]);
+    if (!arr.length){ alert('No rows to export'); return; }
+    downloadCSV(makeCSVFromArray(arr), 'export.csv');
+  }
+
+  function populateTypeChips(){ typeChips.innerHTML = headers.map(h=>`<span class="chip">${h}: ${types[h]}</span>`).join(' '); }
+
+  function round(n){ return (Math.round((n||0)*100)/100); }
+
+  // initial
+  renderAll();
+  </script>
+</body>
+</html>
